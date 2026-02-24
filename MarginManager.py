@@ -26,7 +26,6 @@ class MarginManager:
         order_inc = qty - order_red
         margin_used = self.cost_function[side] * order_inc
 
-        # checking
         swaps = []
         # Remember that scan_index is the worst reduce level at the moment (lowest bid or highest offer)
         scan_index = self.redLevels[side] - 1
@@ -94,5 +93,6 @@ class MarginManager:
                     tail_red = order_price
 
         self.redLevels[side] = red_levels
+        self.tailRed[side] = tail_red
 
         return True
