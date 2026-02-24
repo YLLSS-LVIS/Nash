@@ -17,8 +17,8 @@ class MarginManager:
 
     # Remember that lower number means better price and higher number means worse price
     def add_order(self, price, side, qty):
-        levels = self.priceLevels[side]
-        price_lvl = price * self.priceConverter[side]
+        price_levels = self.priceLevels[side]
+        order_price = price * self.priceConverter[side]
         tail_red = self.tailRed[side]
 
         # Spilt the order into reduce and increase components
@@ -34,13 +34,13 @@ class MarginManager:
                 break
 
             # Check if there is no more price improvement possible
-            if tail_red is None or tail_red <= price_lvl:
+            if tail_red is None or tail_red <= order_price:
                 break
 
             # It is now confirmed that price improvement is possible, i.e. the tail_red price is worse than the order price
-            # Thus, the tail_red price is higher than the order price_lvl
-            price_improvement = tail_red - price_lvl
-            swap_level = levels[tail_red]
+            # Thus, the tail_red price is higher than the order order_price
+            price_improvement = tail_red - order_price
+            swap_level = price_levels[tail_red]
             swap_level_red = swap_level[0]
             swap_qty = min(order_inc, swap_level_red)
             if not swap_qty:
@@ -54,7 +54,7 @@ class MarginManager:
                 break
 
             scan_index -= 1
-            tail_red = levels.keys()[scan_index]
+            tail_red = price_levels.keys()[scan_index]
 
         new_margin = self.balance[1] + margin_used
         if new_margin > self.balance[0]:
@@ -68,6 +68,6 @@ class MarginManager:
             swap_level[1] += swap_qty
             if not swap_level[0]:
                 red_levels -= 1
-                del levels[swap_price]
+                del price_levels[swap_price]
 
         return True
