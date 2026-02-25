@@ -35,7 +35,8 @@ class MarginManager:
 
         swaps = []
         # Remember that scan_index is the worst reduce level at the moment (lowest bid or highest offer)
-        scan_index = self.redLevels[side] - 1
+        red_levels = self.redLevels[side]
+        scan_index = red_levels - 1
         while True:
             # Check if there is no increase component
             if not order_inc:
@@ -74,10 +75,8 @@ class MarginManager:
         new_margin = self.balance[1] + margin_used
         if new_margin > self.balance[0]:
             return False
-
         self.balance[1] = new_margin
 
-        red_levels = self.redLevels[side]
         for swap_price, swap_level, swap_qty in swaps:
             swap_level[0] -= swap_qty
             swap_level[1] += swap_qty
