@@ -15,6 +15,13 @@ class MarginManager:
         self.redLevels = [0, 0]
         self.tailRed = [None, None]
 
+    def update_tail_red(self, side):
+        side_red_levels = self.redLevels[side]
+        if not side_red_levels:
+            self.tailRed[side] = None
+            return
+        self.tailRed[side] = self.priceLevels[side].keys()[side_red_levels - 1]
+
     # Remember that lower number means better price and higher number means worse price
     def add_order(self, price, side, qty):
         price_levels = self.priceLevels[side]
@@ -119,6 +126,7 @@ class MarginManager:
 
         if prev_red and (not level_qtys[0]):
             self.redLevels[side] -= 1
+            self.update_tail_red(side)
 
         if (not level_qtys[0]) and (not level_qtys[1]):
             del price_levels[level_price]
@@ -130,6 +138,8 @@ class MarginManager:
         reducible_qty = self.reduciblePosition[reducible_side]
         alloc_side = [1, 0][reducible_side]
         alloc_levels = self.priceLevels[alloc_side]
+        tail_red = self.tailRed[alloc_side]
+        red_levels = self.redLevels[alloc_side]
 
         for i in range(self.redLevels[alloc_side] - 1, len(alloc_levels)):
             price_level, level_qtys = alloc_levels.peekitem(i)
@@ -140,10 +150,17 @@ class MarginManager:
             if not alloc_qty:
                 break
 
+            prev_red = level_qtys[0]
+            if not prev_red:
+                tail_red = price_level
+                red_levels += 1
+
             level_qtys[1] -= alloc_qty
             level_qtys[0] += alloc_qty
             norm_price = price_level * self.priceConverter[alloc_side]
             self.balance[1] -= self.cost_function[alloc_side](norm_price) * alloc_qty
             reducible_qty -= alloc_qty
 
+        self.redLevels[alloc_side] = red_levels
+        self.tailRed[alloc_side] = tail_red
         self.reduciblePosition[reducible_side] = reducible_qty
