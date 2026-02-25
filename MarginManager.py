@@ -59,6 +59,8 @@ class MarginManager:
                     break
                 scan_index -= 1
                 tail_red = price_levels.keys()[scan_index]
+            # If the swap quantity is not enough to deplete the entirety of the reduce component of the current price level being scanned,
+            # it means that there is no further quantity to swap the entire increase component of the incoming order has been swapped
             else:
                 break
 
@@ -96,3 +98,52 @@ class MarginManager:
         self.tailRed[side] = tail_red
 
         return True
+
+    def remove_order(self, price, side, qty):
+        level_price = self.priceConverter[side] * price
+        price_levels = self.priceLevels[side]
+        level_qtys = price_levels[level_price]
+        rmv_inc = min(qty, level_qtys[1])
+        rmv_red = qty - rmv_inc
+        if rmv_red > level_qtys[0]:
+            raise Exception(
+                "Fatal error: quantity exceeded that at position manager whilst attempting to remove an order. A desync muat have occurred."
+            )
+
+        prev_red = level_qtys[0]
+        level_qtys[0] -= rmv_red
+        level_qtys[1] -= rmv_inc
+
+        if rmv_inc:
+            self.balance[1] -= self.cost_function[side](price) * rmv_inc
+
+        if prev_red and (not level_qtys[0]):
+            self.redLevels[side] -= 1
+
+        if (not level_qtys[0]) and (not level_qtys[1]):
+            del price_levels[level_price]
+
+    def alloc_reducible(self, reducible_side):
+        # What we want to do in this situation is to take the other side of the reducible position,
+        # and starting from the worst reduce price, begin to allocate
+
+        reducible_qty = self.reduciblePosition[reducible_side]
+        alloc_side = [1, 0][reducible_side]
+        alloc_levels = self.priceLevels[alloc_side]
+
+        for i in range(self.redLevels[alloc_side] - 1, len(alloc_levels)):
+            price_level, level_qtys = alloc_levels.peekitem(i)
+            if not level_qtys[1]:
+                continue
+
+            alloc_qty = min(reducible_qty, level_qtys[1])
+            if not alloc_qty:
+                break
+
+            level_qtys[1] -= alloc_qty
+            level_qtys[0] += alloc_qty
+            norm_price = price_level * self.priceConverter[alloc_side]
+            self.balance[1] -= self.cost_function[alloc_side](norm_price) * alloc_qty
+            reducible_qty -= alloc_qty
+
+        self.reduciblePosition[reducible_side] = reducible_qty
