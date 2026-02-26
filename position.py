@@ -84,7 +84,7 @@ class position:
 
         alloc_levels = self.priceLevels[opposite_side]
         inc_levels = self.incLevels[opposite_side]
-        red_levels = self.redLevles[opposite_side]
+        red_levels = self.redLevels[opposite_side]
 
         margin_used = self.balance[1]
         for i in range(-inc_levels, 0):
@@ -104,3 +104,62 @@ class position:
                 red_levels += 1
             if old_inc == alloc_qty:
                 inc_levels -= 1
+
+        self.redLevels[opposite_side] = red_levels
+        self.incLevels[opposite_side] = inc_levels
+
+    def remove_order(self, price, side, qty):
+        level_price = self.price_converter[side] * price
+        price_levels = self.priceLevels[side]
+        level_qtys = price_levels[level_price]
+
+        rmv_inc = min(level_qtys[1], qty)
+        rmv_red = qty - rmv_inc
+        if rmv_red > level_qtys[0]:
+            raise Exception("Fatal error: overflow during order removal process")
+
+        old_red, old_inc = level_qtys
+
+        level_qtys[0] -= rmv_red
+        level_qtys[1] -= rmv_inc
+
+        if old_red and (not level_qtys[0]):
+            self.redLevels[side] -= 1
+        if old_inc and (not level_qtys[1]):
+            self.incLevels[side] -= 1
+
+        if rmv_red:
+            opposite_side = self.opposite_side[side]
+            self.reducible[opposite_side] += rmv_red
+            self.alloc_reducible(opposite_side)
+
+        if not sum(level_qtys):
+            del price_levels[level_price]
+
+    def fill_order(self, order_price, order_side, fill_price, fill_qty):
+        level_price = self.price_converter[order_price] * order_price
+        price_levels = self.priceLevels[order_side]
+        level_qtys = price_levels[level_price]
+
+        fill_red = min(fill_qty, level_qtys[0])
+        fill_inc = fill_qty - fill_red
+        if fill_inc > level_qtys[1]:
+            raise Exception(
+                "Fatal error: fill exceeded total quantity at maker order price level in position manager"
+            )
+
+        self.balance[1] -= self.margin_function[order_side](order_price) * fill_inc
+        self.balance[0] -= self.margin_function[order_side](fill_price) * fill_inc
+
+        sale_revenue = self.margin_function[self.opposite_side[order_side]] * fill_red
+        self.balance[0] += sale_revenue
+        self.balance[1] += sale_revenue
+
+        old_red, old_inc = level_qtys
+        level_qtys[0] -= fill_red
+        level_qtys[1] -= fill_inc
+
+        if old_red and (not level_qtys[0]):
+            self.redLevels[order_side] -= 1
+        if old_inc and (not level_qtys[1]):
+            self.incLevels[order_side] -= 1
