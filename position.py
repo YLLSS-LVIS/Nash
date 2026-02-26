@@ -51,7 +51,7 @@ class position:
             level_qtys[0] -= swap_qty
             level_qtys[1] += swap_qty
 
-            if swap_qty == old_red:
+            if (old_red) and (not level_qtys[0]):
                 red_levels -= 1
             if not old_inc:
                 inc_levels += 1
