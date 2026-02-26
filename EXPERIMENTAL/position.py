@@ -15,6 +15,10 @@ class MarginManager:
         self.redLevels = [0, 0]
         self.tailRed = [None, None]
 
+    # How to load the Margin Manager
+    # 1. Initialise the class with its arguments in the specified position
+    # 2. Put in all related orders of the account
+
     def update_tail_red(self, side):
         side_red_levels = self.redLevels[side]
         if not side_red_levels:
@@ -129,6 +133,8 @@ class MarginManager:
 
         if (not level_qtys[0]) and (not level_qtys[1]):
             del price_levels[level_price]
+
+        self.reduciblePosition[1 - side] += rmv_red
 
     def alloc_reducible(self, reducible_side):
         # What we want to do in this situation is to take the other side of the reducible position,
