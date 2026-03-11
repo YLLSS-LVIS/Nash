@@ -78,6 +78,7 @@ class position:
 
         self.redLevels[side] = red_levels
         self.incLevels[side] = inc_levels
+        return True
 
     def alloc_reducible(self, side):
         reducible = self.reducible[side]
