@@ -3,4 +3,10 @@ class account:
         self.balance = [0, 0]
         self.positions = {}
         self.orders = {}
-        self.free_orders = [i for i in range(0, 20)]
+
+    @property
+    def avblOrderID(self):
+        for i in range(0, 10):
+            if i not in self.orders:
+                return i
+        return False

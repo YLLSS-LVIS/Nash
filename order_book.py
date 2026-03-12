@@ -5,13 +5,13 @@ from position import position
 
 
 class order_book:
-    def __init__(self, _master, contract_id, max_resolution):
+    def __init__(self, _master, contractID, maxResolution):
         self._master = _master
         self.globalAccounts = _master.accounts
 
-        self.contract_id = contract_id
-        self.max_resolution = int(max_resolution)
-        self.cost_function = [lambda x: x, lambda x: self.max_resolution - x]
+        self.contractID = contractID
+        self.maxResolution = int(maxResolution)
+        self.cost_function = [lambda x: x, lambda x: self.maxResolution - x]
 
         self.levels = [SortedDict(), SortedDict()]
         self.priceLevels = [self.levels[0].keys(), self.levels[1].keys()]
@@ -32,7 +32,7 @@ class order_book:
         side_price_levels = self.priceLevels[order.side]
 
         price_change = 0
-        side_change = 0
+        max_val_change = 0
         if order_price in side_book:
             order_level = side_book[order_price]
             order_level[3].tail = order
@@ -57,15 +57,43 @@ class order_book:
             tob = self.topOfBook[order.side]
             if tob is None:
                 tob = order_price
-                price_change = order_price * price_converter
-                side_change = 1
+                price_change = order.price
+                max_val_change = self.maxResolution
             else:
                 new_order_diff = tob - order_price
                 if new_order_diff > 0:  # New level is top-of-book
-                    price_change = new_order_diff * -price_converter
+                    price_change = new_order_diff
                     tob = new_order_diff
             self.topOfBook[order.side] = tob
-        return side_change, price_change
+        return max_val_change, price_change
+
+    def _remove_order(self, order: order):
+        order_price = order.price * self.price_converter[order.side]
+        side_book = self.levels[order.side]
+
+        # Handle processing of order linked list
+        if order.head is not None:
+            order.head.tail = order.tail
+        if order.tail is not None:
+            order.tail.head = order.head
+
+        order_level = side_book[order_price]
+        head_price, tail_price = order_level[0:2]
+        order_level[4] -= 1
+        if not order_level[4]:
+            if head_price is not None:
+                self.levels[head_price][1] = tail_price
+            if tail_price is not None:
+                self.levels[tail_price][0] = head_price
+            del side_book[order_price]
+
+            if order_level[0] is None:
+                # The only price level on the side is removed
+                if order_level[1] is None:
+                    return -self.maxResolution, -order.price
+                # In case that the removed price level is not the only level in the book, calculate the value that the TOB is worsened by
+                diff = tail_price - order_price
+                return 0, -diff
 
     def _process_order(self, order):
         pass
@@ -73,25 +101,25 @@ class order_book:
     def post_order(self, mpid, price, side, qty):
         acct = self.globalAccounts[mpid]
         acct_positions = acct.positions
-        if not len(acct.free_orders):
+        new_order_id = acct.avblOrderID
+        if new_order_id is None:
             return False  # All order slots used up
 
         pos_exists = True
-        if self.contract_id not in acct_positions:
+        if self.contractID not in acct_positions:
             pos_exists = False
-            acct_positions[self.contract_id] = position(
+            acct_positions[self.contractID] = position(
                 margin_function=self.cost_function,
                 position=[0, 0],
                 balance=acct.balance,
             )
 
-        account_pos = acct_positions[self.contract_id]
+        account_pos = acct_positions[self.contractID]
         if account_pos.add_order(price, side, qty):
-            new_order_id = acct.free_orders.pop(-1)
             new_order = order(
                 orderID=new_order_id,
                 mpid=mpid,
-                contractID=self.contract_id,
+                contractID=self.contractID,
                 price=price,
                 side=side,
                 qty=qty,
@@ -100,4 +128,6 @@ class order_book:
             acct.orders[new_order_id] = new_order
             self._process_order(order)
             return True
-        return False  # Insufficient Margine
+        if not pos_exists:
+            del acct_positions[self.contractID]
+        return False  # Insufficient Margin

@@ -21,6 +21,14 @@ class order:
         self.qty = qty
         self.head, self.tail = head, tail
 
+    @property
+    def is_head(self):
+        if self.head is None:
+            return True
+        if self.head.price != self.price:
+            return True
+        return False
+
     def serialise_link(self, link):
         if link is None:
             return None
