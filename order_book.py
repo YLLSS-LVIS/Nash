@@ -67,7 +67,7 @@ class order_book:
             self.topOfBook[order.side] = tob
         return side_change, price_change
 
-    def _process_order(self):
+    def _process_order(self, order):
         pass
 
     def post_order(self, mpid, price, side, qty):
@@ -98,7 +98,6 @@ class order_book:
             )
 
             acct.orders[new_order_id] = new_order
-            self._process_order(self, order)
+            self._process_order(order)
             return True
-
         return False  # Insufficient Margine
