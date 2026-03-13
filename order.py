@@ -8,6 +8,7 @@ class order:
         "qty",
         "head",
         "tail",
+        "is_head",
     ]
 
     def __init__(

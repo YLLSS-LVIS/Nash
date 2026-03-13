@@ -2,10 +2,11 @@ class linked_books:
     def __init__(self, contract_order_books):
         self.books = [order_book for order_book in contract_order_books]
 
-        self.max_sum = 0
-        self.min_sum = 0
-        self.total_resolved_sum = 0
+        # For aggr.buy orders (if total bids > maxSum then arb)
+        self.maxSum = 0
+        # For aggr.sell orders (if total offers < (minSum - totalUnoccopiedValue) then arb))
+        self.minSum = 0
 
-        self.max_offer_sum = -sum(
-            order_book.res for order_book.maxResolution in contract_order_books
+        self.totalUnoccupiedValue = sum(
+            [order_book.maxResolution for order_book in contract_order_books]
         )
