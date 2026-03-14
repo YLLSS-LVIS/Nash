@@ -126,7 +126,13 @@ class order_book:
         while True:
             tob_order = tob_level[2]
             if tob_order.mpid == aggressor_mpid:
-                self._remove_order(tob_order, _ignore_lvl_ops=True)
+                self._remove_order(tob_order, _ignore_remove=True)
+                num_orders -= 1
+            fill_qty = min(qty, tob_order.qty)
+            self._fill_order(tob_order, tob_order.price, fill_qty)
+            if not tob_order.qty:
+                if tob_order.tail is not None:
+                    tob_order.tail.head = None
                 num_orders -= 1
             else:
                 fill_qty = min(qty, tob_order.qty)
