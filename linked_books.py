@@ -1,5 +1,7 @@
 class linked_books:
-    def __init__(self, contract_order_books):
+    def __init__(self, protocol_balance, contract_order_books):
+        self.protocol_balance = protocol_balance
+
         self.books = [order_book for order_book in contract_order_books]
 
         # For aggr.buy orders (if total bids > maxSum then arb)

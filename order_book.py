@@ -68,7 +68,8 @@ class order_book:
         return max_val_change, price_change
 
     def _remove_order(self, order: order):
-        order_price = order.price * self.price_converter[order.side]
+        _converter = self.price_converter[order.side]
+        order_price = order.price * _converter
         side_book = self.levels[order.side]
 
         # Handle processing of order linked list
@@ -93,7 +94,39 @@ class order_book:
                     return -self.maxResolution, -order.price
                 # In case that the removed price level is not the only level in the book, calculate the value that the TOB is worsened by
                 diff = tail_price - order_price
-                return 0, -diff
+                return (0, diff * _converter)
+
+    def lift_tob(self, side, qty):
+        tob = self.topOfBook[side]
+        if tob is None:
+            raise Exception("No top-of-book exists for the specified side")
+        side_levels = self.levels[side]
+        tob_level = side_levels[tob]
+        if qty > tob_level[5]:
+            raise Exception("Requested fill exceeded top-of-book quantity")
+
+        tob_level[5] -= qty
+        num_orders = tob_level[4]
+        while True:
+            tob_order = tob_level[2]
+            fill_qty = min(qty, tob_order.qty)
+            self.fill_order(tob_order, tob_order.price, fill_qty)
+            if not tob_order.qty:
+                if tob_order.tail is not None:
+                    tob_order.tail.head = None
+                num_orders -= 1
+
+        if not num_orders:
+            tail_level_price = tob_level[1]
+            if tail_level_price is not None:
+                side_levels[tail_level_price][0] = None
+                return
+            del side_levels[tob]
+
+    def fill_order(self, order: order, price, qty):
+        margin_manager = self.globalAccounts[order.mpid].positions[order.contractID]
+        margin_manager.fill_order(order.price, order.side, price, qty)
+        order.qty -= qty
 
     def _process_order(self, order):
         pass
