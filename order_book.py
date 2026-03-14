@@ -67,7 +67,7 @@ class order_book:
             self.topOfBook[order.side] = tob
         return tob_change, free_total_change
 
-    def _remove_order(self, order: order):
+    def _remove_order(self, order: order, _ignore_lvl_ops=False):
         _converter = self.price_converter[order.side]
         order_price = order.price * _converter
         side_book = self.levels[order.side]
@@ -80,9 +80,10 @@ class order_book:
 
         order_level = side_book[order_price]
         head_price, tail_price = order_level[0:2]
-        order_level[4] -= 1
-        if not order_level[4]:
-            return self._remove_level(order.side, _converter * order.price)
+        if not _ignore_lvl_ops:
+            order_level[4] -= 1
+            if order_level[4] == 1:
+                return self._remove_level(order.side, order_price)
 
     def _remove_level(self, side, price):
         _converter = self.price_converter[side]
@@ -113,27 +114,29 @@ class order_book:
         del side_levels[price]
         return tob_change, free_total_change
 
-    def lift_tob(self, side, qty):
+    def _lift_tob(self, side, qty, aggressor_mpid=None):
         tob = self.topOfBook[side]
         if tob is None:
             raise Exception("No top-of-book exists for the specified side")
         side_levels = self.levels[side]
         tob_level = side_levels[tob]
-        if qty > tob_level[5]:
-            raise Exception("Requested fill exceeded top-of-book quantity")
 
         tob_level[5] -= qty
         num_orders = tob_level[4]
         while True:
             tob_order = tob_level[2]
-            fill_qty = min(qty, tob_order.qty)
-            self.fill_order(tob_order, tob_order.price, fill_qty)
-            if not tob_order.qty:
-                if tob_order.tail is not None:
-                    tob_order.tail.head = None
+            if tob_order.mpid == aggressor_mpid:
+                self._remove_order(tob_order, _ignore_lvl_ops=True)
                 num_orders -= 1
-            qty -= fill_qty
-            tob_level[5] -= qty
+            else:
+                fill_qty = min(qty, tob_order.qty)
+                self._fill_order(tob_order, tob_order.price, fill_qty)
+                if not tob_order.qty:
+                    if tob_order.tail is not None:
+                        tob_order.tail.head = None
+                    num_orders -= 1
+                qty -= fill_qty
+                tob_level[5] -= qty
             if (not fill_qty) or (not num_orders):
                 break
             # We only set the tail after the tob level is changed, to ensure that there is no redundant operation with changes to a level that is about to be removed
@@ -143,9 +146,9 @@ class order_book:
         if not num_orders:
             return self._remove_level(side, tob)
 
-    def fill_order(self, order: order, price, qty):
+    def _fill_order(self, order: order, price, qty):
         margin_manager = self.globalAccounts[order.mpid].positions[order.contractID]
-        margin_manager.fill_order(order.price, order.side, price, qty)
+        margin_manager._fill_order(order.price, order.side, price, qty)
         order.qty -= qty
 
     def _process_order(self, order):
