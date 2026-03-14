@@ -126,7 +126,7 @@ class order_book:
         while True:
             tob_order = tob_level[2]
             if tob_order.mpid == aggressor_mpid:
-                self._remove_order(tob_order, _ignore_remove=True)
+                self._remove_order(tob_order, _ignore_lvl_ops=True)
                 num_orders -= 1
             fill_qty = min(qty, tob_order.qty)
             self._fill_order(tob_order, tob_order.price, fill_qty)
@@ -147,7 +147,7 @@ class order_book:
                 break
             # We only set the tail after the tob level is changed, to ensure that there is no redundant operation with changes to a level that is about to be removed
             tob_level[2] = tob_order.tail
-
+        tob_level[4] = num_orders
         _converter = self.price_converter[side]
         if not num_orders:
             return self._remove_level(side, tob)
