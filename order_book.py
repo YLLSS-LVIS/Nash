@@ -23,7 +23,7 @@ class order_book:
 
     def _add_order(self, order: order):
         """
-        Adds a new order into the order book, returns the change in the form of (level_presence_change, level_price_change)
+        Adds a new order into the order book, returns the change in the form of (level_presence_change, level_tob_change)
         """
         price_converter = self.price_converter[order.side]
 
@@ -31,8 +31,8 @@ class order_book:
         side_book = self.levels[order.side]
         side_price_levels = self.priceLevels[order.side]
 
-        price_change = 0
-        max_val_change = 0
+        tob_change = 0
+        free_total_change = 0
         if order_price in side_book:
             order_level = side_book[order_price]
             order_level[3].tail = order
@@ -57,15 +57,15 @@ class order_book:
             tob = self.topOfBook[order.side]
             if tob is None:
                 tob = order_price
-                price_change = order.price
-                max_val_change = self.maxResolution
+                tob_change = order.price
+                free_total_change = -self.maxResolution
             else:
                 new_order_diff = tob - order_price
                 if new_order_diff > 0:  # New level is top-of-book
-                    price_change = new_order_diff
+                    tob_change = new_order_diff
                     tob = new_order_diff
             self.topOfBook[order.side] = tob
-        return max_val_change, price_change
+        return tob_change, free_total_change
 
     def _remove_order(self, order: order):
         _converter = self.price_converter[order.side]
@@ -82,19 +82,36 @@ class order_book:
         head_price, tail_price = order_level[0:2]
         order_level[4] -= 1
         if not order_level[4]:
-            if head_price is not None:
-                self.levels[head_price][1] = tail_price
-            if tail_price is not None:
-                self.levels[tail_price][0] = head_price
-            del side_book[order_price]
+            return self._remove_level(order.side, _converter * order.price)
 
-            if order_level[0] is None:
-                # The only price level on the side is removed
-                if order_level[1] is None:
-                    return -self.maxResolution, -order.price
-                # In case that the removed price level is not the only level in the book, calculate the value that the TOB is worsened by
-                diff = tail_price - order_price
-                return (0, diff * _converter)
+    def _remove_level(self, side, price):
+        _converter = self.price_converter[side]
+        side_levels = self.levels[side]
+        price_level = side_levels[price]
+
+        price_level_head, price_level_tail = price_level[0:3]
+        head_exists = price_level_head is not None
+        tail_exists = price_level_tail is not None
+        tob_change, free_total_change = 0, 0
+
+        if head_exists:
+            side_levels[price_level_head][1] = price_level_tail
+        if tail_exists:
+            side_levels[price_level_tail][0] = price_level_head
+
+        # If the price level has no tail, it is the TOB (top-of-book)
+        if not (
+            head_exists + tail_exists
+        ):  # The TOB is also the only price level on the specified side
+            tob_change = price * -_converter
+            free_total_change = self.maxResolution
+            self.topOfBook[side] = None
+        elif not head_exists:  # There is a second-best price level after the TOB
+            # price_level_tail * price must be positive, and the change of TOB should be negative for the bid side and positive for the offer side
+            tob_change = price_level_tail * price * _converter
+            self.topOfBook[side] = price_level_tail
+        del side_levels[price]
+        return tob_change, free_total_change
 
     def lift_tob(self, side, qty):
         tob = self.topOfBook[side]
@@ -115,13 +132,16 @@ class order_book:
                 if tob_order.tail is not None:
                     tob_order.tail.head = None
                 num_orders -= 1
+            qty -= fill_qty
+            tob_level[5] -= qty
+            if (not fill_qty) or (not num_orders):
+                break
+            # We only set the tail after the tob level is changed, to ensure that there is no redundant operation with changes to a level that is about to be removed
+            tob_level[2] = tob_order.tail
 
+        _converter = self.price_converter[side]
         if not num_orders:
-            tail_level_price = tob_level[1]
-            if tail_level_price is not None:
-                side_levels[tail_level_price][0] = None
-                return
-            del side_levels[tob]
+            return self._remove_level(side, tob)
 
     def fill_order(self, order: order, price, qty):
         margin_manager = self.globalAccounts[order.mpid].positions[order.contractID]
