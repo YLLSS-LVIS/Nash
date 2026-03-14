@@ -68,20 +68,19 @@ class order_book:
         return tob_change, free_total_change
 
     def _remove_order(self, order: order, _ignore_lvl_ops=False):
-        _converter = self.price_converter[order.side]
-        order_price = order.price * _converter
-        side_book = self.levels[order.side]
-
         # Handle processing of order linked list
         if order.head is not None:
             order.head.tail = order.tail
         if order.tail is not None:
             order.tail.head = order.head
 
-        order_level = side_book[order_price]
-        head_price, tail_price = order_level[0:2]
         if not _ignore_lvl_ops:
+            _converter = self.price_converter[order.side]
+            side_book = self.levels[order.side]
+            order_price = order.price * _converter
+            order_level = side_book[order_price]
             order_level[4] -= 1
+
             if order_level[4] == 1:
                 return self._remove_level(order.side, order_price)
 
@@ -112,7 +111,7 @@ class order_book:
             tob_change = price_level_tail * price * _converter
             self.topOfBook[side] = price_level_tail
         del side_levels[price]
-        return tob_change, free_total_change
+        return (tob_change, free_total_change)
 
     def _lift_tob(self, side, qty, aggressor_mpid=None):
         tob = self.topOfBook[side]
@@ -121,36 +120,45 @@ class order_book:
         side_levels = self.levels[side]
         tob_level = side_levels[tob]
 
-        tob_level[5] -= qty
         num_orders = tob_level[4]
+        tob_qty = tob_level[5]
         while True:
             tob_order = tob_level[2]
+            fill_qty = -1
+
+            # Self-Match Prevention
             if tob_order.mpid == aggressor_mpid:
-                self._remove_order(tob_order, _ignore_lvl_ops=True)
+                tob_order_tail = tob_order.tail
+                tob_qty -= tob_order.qty
                 num_orders -= 1
-            fill_qty = min(qty, tob_order.qty)
-            self._fill_order(tob_order, tob_order.price, fill_qty)
-            if not tob_order.qty:
-                if tob_order.tail is not None:
-                    tob_order.tail.head = None
-                num_orders -= 1
+                if tob_order_tail is not None:
+                    tob_order_tail.head = None
+
+                tob_level[2] = tob_order_tail
+
             else:
                 fill_qty = min(qty, tob_order.qty)
                 self._fill_order(tob_order, tob_order.price, fill_qty)
+                qty -= fill_qty
+                tob_qty -= fill_qty
                 if not tob_order.qty:
                     if tob_order.tail is not None:
                         tob_order.tail.head = None
                     num_orders -= 1
-                qty -= fill_qty
-                tob_level[5] -= qty
+                    tob_level[2] = tob_order.tail
+                else:
+                    break  # If the top-of-book order is not filled, it means that the entire aggresssing quantity has been exhausted, and just exit the loop
+
             if (not fill_qty) or (not num_orders):
                 break
-            # We only set the tail after the tob level is changed, to ensure that there is no redundant operation with changes to a level that is about to be removed
-            tob_level[2] = tob_order.tail
-        tob_level[4] = num_orders
-        _converter = self.price_converter[side]
+
+        level_rmv_result = None
         if not num_orders:
-            return self._remove_level(side, tob)
+            level_rmv_result = self._remove_level(side, tob)
+        else:
+            tob_level[4] = num_orders
+            tob_level[5] = tob_qty
+        return level_rmv_result, qty
 
     def _fill_order(self, order: order, price, qty):
         margin_manager = self.globalAccounts[order.mpid].positions[order.contractID]
