@@ -151,12 +151,14 @@ class position:
                 "Fatal error: fill exceeded total quantity at maker order price level in position manager"
             )
 
-        self.balance[1] -= self.margin_function[order_side](order_price) * fill_inc
-        self.balance[0] -= self.margin_function[order_side](fill_price) * fill_inc
+        self.balance[1] += (
+            sale_revenue - self.margin_function[order_side](order_price) * fill_inc
+        )
+        self.balance[0] += (
+            sale_revenue - self.margin_function[order_side](fill_price) * fill_inc
+        )
 
         sale_revenue = self.margin_function[self.opposite_side[order_side]] * fill_red
-        self.balance[0] += sale_revenue
-        self.balance[1] += sale_revenue
 
         old_red, old_inc = level_qtys
         level_qtys[0] -= fill_red
