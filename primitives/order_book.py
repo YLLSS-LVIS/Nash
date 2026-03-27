@@ -1,3 +1,5 @@
+import shelve
+
 from position import position
 from sortedcontainers import SortedDict
 
@@ -62,8 +64,52 @@ class order_book:
 
             acct.orders.add(new_order_id)
 
-    def handle_aggressor(self, aggressor_side, aggressor_price, aggressor_qty, aggressor_mpid):
+    def rmv_order(self, idx):
+        self.in_use[idx] = 0
+        head, tail = self.head[idx], self.tail[idx]
+        if head != -1:
+            self.tail[head] = tail
+        if tail != -1:
+            self.head[tail] = head
 
+    def take_tob(self, side, qty, mpid=None):
+        side_tob = self.tob[side]
+        side_book = self.book[side]
+        tob_lvl = side_book[side_tob]
+        tob_order = tob_lvl[2]
+        tob_orders, tob_qty = tob_lvl[4:6]
+        for i in range(0, tob_orders):
+            if tob_order == -1:
+                break
+
+            tob_order_mpid = self.mpid[tob_order]
+            if mpid == tob_order_mpid:
+                self.rmv_order(tob_order)
+                tob_orders -= 1
+                tob_order = self.tail[tob_order]
+                continue
+
+            order_qty = self.qty[tob_order]
+            fill_qty = min(qty, order_qty)
+            qty -= fill_qty
+            order_qty -= fill_qty
+            tob_qty -= fill_qty
+
+            order_price = self.price[tob_order]
+            self.userPositions[tob_order_mpid].fill_order(
+                order_price, side, order_price, qty
+            )
+            if not order_qty:
+                self.rmv_order(tob_order)
+                tob_orders -= 1
+                tob_order = self.tail[tob_order]
+
+        if not tob_orders:
+            self._book_remove_level(side, side_tob)
+        else:
+            tob_lvl[2] = tob_order
+            tob_lvl[4:6] = tob_orders, tob_qty
+        return qty
 
     def _book_add_order(self, order_idx):
         order_price = self.price[order_idx]
@@ -105,10 +151,14 @@ class order_book:
 
     def _book_remove_level(self, side, book_price):
         side_book = self.book[side]
-        head_price, tail_price, head_order, tail_order, num_orders, qty = side_book[book_price]
+        head_price, tail_price, head_order, tail_order, num_orders, qty = side_book[
+            book_price
+        ]
         if num_orders:
-            raise Exception('Removal of price level containing orders attempted')
+            raise Exception("Removal of price level containing orders attempted")
         if head_price is not None:
             side_book[head_price][1] = tail_price
         if tail_price is not None:
             side_book[tail_price][0] = head_price
+        if not head_price:
+            self.tob = tail_price
