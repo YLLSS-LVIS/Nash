@@ -16,8 +16,24 @@ class orders:
         self.qty = array.array("L", new_val)
         self.head = array.array("L", new_val)
         self.tail = array.array("L", new_val)
-        self.in_use = array.array("B", new_val)
+        self.alive = array.array("B", new_val)
 
     @property
     def space_available(self):
         return not self.used_orders == self.max_orders
+
+    def add_order(self, mpid, contract_id, price, side, qty):
+        order_idx = self.used_orders
+        self.alive[order_idx] = 1
+        self.contract_id[order_idx] = contract_id
+        self.price[order_idx] = price
+        self.side[order_idx] = side
+        self.qty[order_idx] = qty
+
+    def remove_order(self, order_idx):
+        if not self.alive[order_idx]:
+            raise Exception("Removal of a dead order was attempted")
+
+        self.alive[order_idx] = 0
+        self.used_orders -= 1
+        self.free[self.used_orders] = order_idx

@@ -19,11 +19,22 @@ class position:
         self.opposite_side = [1, 0]
         self.margin_function = margin_function
 
+    def debug(self):
+        print("Balance", self.balance)
+        print("Position", self.position)
+        print("Reducible", self.reducible)
+        print("Reduce Lvls", self.redLevels, "| Increase Lvls", self.incLevels)
+
+        print("Buy Orders", self.priceLevels[0])
+        print("Sell Orders", self.priceLevels[1])
+
     def add_order(self, price, side, qty):
+        opp_side = self.opposite_side[side]
         order_price = self.price_converter[side] * price
-        order_red = min(qty, self.reducible[self.opposite_side[side]])
+        order_red = min(qty, self.reducible[opp_side])
         order_inc = qty - order_red
-        margin_used = self.margin_function[side][price]
+        init_red = order_red
+        margin_used = self.margin_function[side](price) * order_inc
 
         price_levels = self.priceLevels[side]
         red_levels = self.redLevels[side]
@@ -45,6 +56,8 @@ class position:
         new_margin = self.balance[1] + margin_used
         if new_margin > self.balance[0]:
             return False
+
+        self.balance[1] = new_margin
 
         inc_levels = self.incLevels[side]
         for level_price, level_qtys, swap_qty in swaps:
@@ -78,11 +91,12 @@ class position:
 
         self.redLevels[side] = red_levels
         self.incLevels[side] = inc_levels
+        self.reducible[opp_side] -= init_red
         return True
 
     def alloc_reducible(self, side):
         reducible = self.reducible[side]
-
+        # print("Alloc", side, reducible)
         opposite_side = self.opposite_side[side]
 
         alloc_levels = self.priceLevels[opposite_side]
@@ -96,13 +110,11 @@ class position:
             alloc_qty = min(old_inc, reducible)
             if not alloc_qty:
                 break
-
+            reducible -= alloc_qty
             level_qtys[1] -= alloc_qty
             level_qtys[0] += alloc_qty
 
-            margin_used -= self.margin_function[opposite_side](
-                price * self.price_converter[opposite_side]
-            )
+            margin_used -= self.margin_function[opposite_side](abs(price)) * alloc_qty
             if not old_red:
                 red_levels += 1
             if old_inc == alloc_qty:
@@ -110,6 +122,9 @@ class position:
 
         self.redLevels[opposite_side] = red_levels
         self.incLevels[opposite_side] = inc_levels
+        self.reducible[side] = reducible
+        self.balance[1] = margin_used
+        return True
 
     def remove_order(self, price, side, qty):
         level_price = self.price_converter[side] * price
@@ -121,6 +136,7 @@ class position:
         if rmv_red > level_qtys[0]:
             raise Exception("Fatal error: overflow during order removal process")
 
+        self.balance[1] -= self.margin_function[side](price) * rmv_inc
         old_red, old_inc = level_qtys
 
         level_qtys[0] -= rmv_red
@@ -139,8 +155,10 @@ class position:
         if not sum(level_qtys):
             del price_levels[level_price]
 
+        return True
+
     def fill_order(self, order_price, order_side, fill_price, fill_qty):
-        level_price = self.price_converter[order_price] * order_price
+        level_price = self.price_converter[order_side] * order_price
         price_levels = self.priceLevels[order_side]
         level_qtys = price_levels[level_price]
 
@@ -151,20 +169,31 @@ class position:
                 "Fatal error: fill exceeded total quantity at maker order price level in position manager"
             )
 
-        sale_revenue = self.margin_function[self.opposite_side[order_side]] * fill_red
+        self.reducible[order_side] += fill_inc
 
-        self.balance[1] += (
+        sale_revenue = (
+            self.margin_function[self.opposite_side[order_side]](fill_price) * fill_red
+        )
+
+        self.balance[1] += -self.margin_function[order_side](order_price) * fill_inc
+        self.balance[0] += (
             sale_revenue - self.margin_function[order_side](order_price) * fill_inc
         )
-        self.balance[0] += (
-            sale_revenue - self.margin_function[order_side](fill_price) * fill_inc
-        )
+
+        self.position[order_side] += fill_inc
+        self.position[self.opposite_side[order_side]] -= fill_red
 
         old_red, old_inc = level_qtys
         level_qtys[0] -= fill_red
         level_qtys[1] -= fill_inc
-
         if old_red and (not level_qtys[0]):
             self.redLevels[order_side] -= 1
         if old_inc and (not level_qtys[1]):
             self.incLevels[order_side] -= 1
+
+        self.alloc_reducible(order_side)
+
+        if not sum(level_qtys):
+            del price_levels[level_price]
+
+        return True

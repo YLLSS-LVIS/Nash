@@ -1,5 +1,3 @@
-import shelve
-
 from position import position
 from sortedcontainers import SortedDict
 
@@ -19,6 +17,8 @@ class order_book:
 
         orders = _master.orders
         self.orders = orders
+        self._remove_order = orders.remove_order
+        self._add_order = orders.add_order
         self.mpid = orders.mpid
         self.order_id = orders.order_id
         self.contract_id = orders.contract_id
@@ -55,24 +55,15 @@ class order_book:
             user_position = self.userPositions[mpid]
 
         if user_position.add_order(price, side, qty):
-            new_order_id = self.orders.used_orders
-            self.mpid[new_order_id] = mpid
-            self.contract_id[new_order_id] = self.contractID
-            self.price[new_order_id] = price
-            self.side[new_order_id] = side
-            self.in_use[new_order_id] = 1
-
+            self._add_order(mpid, self.contractID, price, side, qty)
             acct.orders.add(new_order_id)
 
-    def rmv_order(self, idx):
-        self.in_use[idx] = 0
-        head, tail = self.head[idx], self.tail[idx]
-        if head != -1:
-            self.tail[head] = tail
-        if tail != -1:
-            self.head[tail] = head
+    def process_aggressing_order(self, mpid, price, side, qty):
+        acct_margin_manager = self.userPositions[mpid]
 
     def take_tob(self, side, qty, mpid=None):
+        # This section was written at TKTORC
+
         side_tob = self.tob[side]
         side_book = self.book[side]
         tob_lvl = side_book[side_tob]
@@ -83,26 +74,30 @@ class order_book:
                 break
 
             tob_order_mpid = self.mpid[tob_order]
-            if mpid == tob_order_mpid:
-                self.rmv_order(tob_order)
-                tob_orders -= 1
-                tob_order = self.tail[tob_order]
-                continue
 
             order_qty = self.qty[tob_order]
-            fill_qty = min(qty, order_qty)
-            qty -= fill_qty
-            order_qty -= fill_qty
-            tob_qty -= fill_qty
+            if tob_order_mpid == mpid:
+                order_qty = 0
+            else:
+                fill_qty = min(qty, order_qty)
+                if not fill_qty:
+                    break
 
-            order_price = self.price[tob_order]
-            self.userPositions[tob_order_mpid].fill_order(
-                order_price, side, order_price, qty
-            )
+                qty -= fill_qty
+                order_qty -= fill_qty
+                tob_qty -= fill_qty
+
+                order_price = self.price[tob_order]
+                self.userPositions[tob_order_mpid].fill_order(
+                    order_price, side, order_price, qty
+                )
+
             if not order_qty:
-                self.rmv_order(tob_order)
+                self._remove_order(tob_order)
                 tob_orders -= 1
                 tob_order = self.tail[tob_order]
+            else:
+                self.qty[tob_order] = order_qty
 
         if not tob_orders:
             self._book_remove_level(side, side_tob)
