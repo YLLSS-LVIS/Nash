@@ -4,6 +4,7 @@ from sortedcontainers import SortedDict
 
 
 class position:
+    # How to load:
     def __init__(self, margin_function, position, balance):
         self.balance = balance
         self.position = position

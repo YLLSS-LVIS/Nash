@@ -34,6 +34,11 @@ class orders:
         if not self.alive[order_idx]:
             raise Exception("Removal of a dead order was attempted")
 
+        order_head, order_tail = self.head[order_idx], self.tail[order_idx]
+        if order_head != -1:
+            self.tail[order_head] = order_tail
+        if order_tail != -1:
+            self.head[order_tail] = order_head
         self.alive[order_idx] = 0
         self.used_orders -= 1
         self.free[self.used_orders] = order_idx
