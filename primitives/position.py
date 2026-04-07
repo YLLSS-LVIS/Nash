@@ -4,7 +4,6 @@ from sortedcontainers import SortedDict
 
 
 class position:
-    # How to load:
     def __init__(self, margin_function, position, balance):
         self.balance = balance
         self.position = position
@@ -31,10 +30,11 @@ class position:
 
     def add_order(self, price, side, qty):
         opp_side = self.opposite_side[side]
+        opp_reducible = self.reducible[opp_side]
         order_price = self.price_converter[side] * price
-        order_red = min(qty, self.reducible[opp_side])
+        order_red = min(qty, opp_reducible)
         order_inc = qty - order_red
-        init_red = order_red
+        opp_reducible -= order_red
         margin_used = self.margin_function[side](price) * order_inc
 
         price_levels = self.priceLevels[side]
@@ -92,7 +92,7 @@ class position:
 
         self.redLevels[side] = red_levels
         self.incLevels[side] = inc_levels
-        self.reducible[opp_side] -= init_red
+        self.reducible[opp_side] = opp_reducible
         return True
 
     def alloc_reducible(self, side):
@@ -198,3 +198,19 @@ class position:
             del price_levels[level_price]
 
         return True
+
+    def settle_contract(self, settlement_price):
+        position_settlement_value = sum(
+            [
+                self.position[side] * self.margin_function[side](settlement_price)
+                for side in [0, 1]
+            ]
+        )
+
+        self.balance[0] += position_settlement_value
+        freed_margin = 0
+        for side, side_level in enumerate(self.priceLevels):
+            for lvl_price, lvl_qtys in side_level.items():
+                freed_margin += self.margin_function[side](abs(lvl_price) * lvl_qtys[1])
+
+        self.balance[1] -= freed_margin
