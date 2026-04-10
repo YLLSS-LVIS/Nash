@@ -1,4 +1,7 @@
-# Nash
+# Nash III
+# Work on Nash III has currently not formally begun.
+Nash III is a complete implementation of the Nash specifications, including cross-matching with best execution functionality, 
+
 ## **WARNING**
 Nash *does not* operate with fiat currency or regulated assets, including cryptocurrencies. No path of conversion to the abovementioned assets are offered. Though Nash is a sophisticated simulation of an actual financial exchange, it shall not be used to constue any advice on investment or trading decisions. Trading in financial markets in real life can lead to losses exceeding one's initial capital. DYOR.
 
